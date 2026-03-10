@@ -3,7 +3,7 @@
 // Usage:
 //   node nearby.mjs "咖啡"              — search near current location
 //   node nearby.mjs "药店" --radius 1000 — custom radius
-//   node nearby.mjs "餐厅" --lat 40.033 --lng 116.417  — explicit coords
+//   node nearby.mjs "餐厅" --lat 37.775 --lng -122.419  — explicit coords
 //   node nearby.mjs "咖啡" --json        — JSON output
 //
 // ENV:

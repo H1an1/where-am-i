@@ -106,7 +106,7 @@ Requires `AMAP_API_KEY` env var. Get a free key at https://lbs.amap.com
 node scripts/nearby.mjs "咖啡"
 
 # Custom radius and explicit coordinates
-node scripts/nearby.mjs "餐厅" --radius 1000 --lat 40.033 --lng 116.417
+node scripts/nearby.mjs "餐厅" --radius 1000 --lat 37.775 --lng -122.419
 
 # JSON output for programmatic use
 node scripts/nearby.mjs "药店" --json
