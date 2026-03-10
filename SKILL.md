@@ -29,19 +29,26 @@ Without `AUTH_SECRET`, the server runs open (fine for localhost, not for public 
 ### 2. Expose via Cloudflare Tunnel
 
 ```bash
-# Already configured: gps.han1.fyi → localhost:8073
-# Runs as launchd service: com.friday.cloudflared-owntracks
-# Config: ~/.cloudflared/config.yml
-# Protocol: http2 (quic blocked in China)
+# Create a tunnel and route DNS
+cloudflared tunnel create owntracks
+cloudflared tunnel route dns owntracks gps.yourdomain.com
 
-# Manual run (if needed):
+# Create ~/.cloudflared/config.yml:
+# tunnel: <tunnel-id>
+# credentials-file: ~/.cloudflared/<tunnel-id>.json
+# ingress:
+#   - hostname: gps.yourdomain.com
+#     service: http://localhost:8073
+#   - service: http_status:404
+
+# Run (use http2 if quic is blocked, e.g. in China)
 cloudflared tunnel --protocol http2 run owntracks
 ```
 
 ### 3. Configure OwnTracks app
 
 - **Mode:** HTTP
-- **URL:** `https://gps.han1.fyi/`
+- **URL:** `https://gps.yourdomain.com/`
 - **Authentication:** Username + password (matching AUTH_USER / AUTH_SECRET)
 - **Monitoring:** Significant (battery-friendly) or Move (precise tracking)
 
