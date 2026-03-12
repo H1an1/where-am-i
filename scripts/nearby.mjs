@@ -18,24 +18,33 @@ const DATA_DIR = resolve(process.env.DATA_DIR || join(SCRIPT_DIR, '..', 'data'))
 const CURRENT_FILE = join(DATA_DIR, 'current-location.json');
 const KEY = process.env.AMAP_API_KEY;
 
-// OwnTracks on iOS in China may report GCJ-02 coordinates (Apple's CoreLocation
-// already applies the shift). Set COORD_SYSTEM=wgs84 to enable WGS→GCJ conversion
-// (e.g. for Android or non-China devices that report raw WGS-84).
-const COORD_SYSTEM = process.env.COORD_SYSTEM || 'gcj02'; // 'gcj02' = already shifted, 'wgs84' = needs conversion
+// OwnTracks on iOS reports WGS-84 coordinates (standard GPS).
+// AMap API requires GCJ-02. Default: convert WGS→GCJ automatically.
+// Set COORD_SYSTEM=gcj02 if your device already reports GCJ-02.
+const COORD_SYSTEM = process.env.COORD_SYSTEM || 'wgs84'; // iOS CoreLocation = WGS-84, needs conversion for AMap
 
 // --- WGS-84 → GCJ-02 conversion (required for AMap when source is WGS-84) ---
 const _PI = Math.PI, WGS_A = 6378245.0, WGS_EE = 0.00669342162296594323;
 function outOfChina(lat, lon) { return lon < 72.004 || lon > 137.8347 || lat < 0.8293 || lat > 55.8271; }
+function _transformLat(x, y) {
+  let ret = -100 + 2 * x + 3 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+  ret += (20 * Math.sin(6 * x * _PI) + 20 * Math.sin(2 * x * _PI)) * 2 / 3;
+  ret += (20 * Math.sin(y * _PI) + 40 * Math.sin(y / 3 * _PI)) * 2 / 3;
+  ret += (160 * Math.sin(y / 12 * _PI) + 320 * Math.sin(y * _PI / 30)) * 2 / 3;
+  return ret;
+}
+function _transformLon(x, y) {
+  let ret = 300 + x + 2 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+  ret += (20 * Math.sin(6 * x * _PI) + 20 * Math.sin(2 * x * _PI)) * 2 / 3;
+  ret += (20 * Math.sin(x * _PI) + 40 * Math.sin(x / 3 * _PI)) * 2 / 3;
+  ret += (150 * Math.sin(x / 12 * _PI) + 300 * Math.sin(x / 30 * _PI)) * 2 / 3;
+  return ret;
+}
 function wgs2gcj(wgsLat, wgsLon) {
   if (outOfChina(wgsLat, wgsLon)) return [wgsLat, wgsLon];
-  let dLat = -100 + 2 * wgsLon + 3 * wgsLat + 0.2 * wgsLat * wgsLat + 0.1 * wgsLat * wgsLon + 0.2 * Math.sqrt(Math.abs(wgsLon));
-  dLat += (20 * Math.sin(6 * wgsLon * _PI) + 20 * Math.sin(2 * wgsLon * _PI)) * 2 / 3;
-  dLat += (20 * Math.sin(wgsLat * _PI) + 40 * Math.sin(wgsLat / 3 * _PI)) * 2 / 3;
-  dLat += (160 * Math.sin(wgsLat / 12 * _PI) + 320 * Math.sin(wgsLat * _PI / 30)) * 2 / 3;
-  let dLon = 300 + wgsLon + 2 * wgsLat + 0.1 * wgsLon * wgsLon + 0.1 * wgsLat * wgsLon + 0.1 * Math.sqrt(Math.abs(wgsLon));
-  dLon += (20 * Math.sin(6 * wgsLon * _PI) + 20 * Math.sin(2 * wgsLon * _PI)) * 2 / 3;
-  dLon += (20 * Math.sin(wgsLon * _PI) + 40 * Math.sin(wgsLon / 3 * _PI)) * 2 / 3;
-  dLon += (150 * Math.sin(wgsLon / 12 * _PI) + 300 * Math.sin(wgsLon / 30 * _PI)) * 2 / 3;
+  const x = wgsLon - 105, y = wgsLat - 35;
+  let dLat = _transformLat(x, y);
+  let dLon = _transformLon(x, y);
   const radLat = wgsLat / 180 * _PI;
   let magic = Math.sin(radLat); magic = 1 - WGS_EE * magic * magic;
   const sqrtM = Math.sqrt(magic);

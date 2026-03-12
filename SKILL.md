@@ -138,14 +138,14 @@ Requires `AMAP_API_KEY` env var. Get a free key at https://lbs.amap.com
 
 ### Coordinate System (China users)
 
-AMap requires GCJ-02 coordinates. OwnTracks on **iOS in China** reports GCJ-02 (Apple CoreLocation applies the shift), so no conversion needed (default). On **Android** or outside China, coordinates are WGS-84 — set `COORD_SYSTEM=wgs84` to enable automatic WGS→GCJ conversion:
+AMap requires GCJ-02 coordinates. iOS CoreLocation returns **WGS-84** (the GPS standard), and the `nearby.mjs` script includes a built-in WGS-84 → GCJ-02 converter (default: `COORD_SYSTEM=wgs84`). If your device already provides GCJ-02, set `COORD_SYSTEM=gcj02` to skip conversion:
 
 ```bash
-# iOS in China (default, no conversion needed)
+# iOS / standard GPS devices (default, auto-converts WGS→GCJ)
 node scripts/nearby.mjs "咖啡"
 
-# Android or outside China (enable WGS→GCJ conversion)
-COORD_SYSTEM=wgs84 node scripts/nearby.mjs "咖啡"
+# If your device already reports GCJ-02
+COORD_SYSTEM=gcj02 node scripts/nearby.mjs "咖啡"
 ```
 
 ```bash
@@ -171,6 +171,72 @@ Combines with GPS: if OwnTracks is running, nearby search auto-detects your loca
 - `scripts/server.mjs` — HTTP receiver (zero deps)
 - `scripts/query.mjs` — CLI query tool (zero deps)
 - `scripts/nearby.mjs` — AMap nearby POI search (zero deps, needs AMAP_API_KEY)
+- `scripts/gps-inject.sh` — Injects GPS status into HEARTBEAT.md (for agent context)
 - `scripts/places.example.json` — Example places config
 - `places.json` — Your places config (create from example, gitignored)
 - `data/` — Location data (created automatically, gitignored)
+
+## Heartbeat Integration (Agent GPS Awareness)
+
+The key challenge: an agent's heartbeat reads HEARTBEAT.md, but may skip instructions inside it. The solution is **code-level injection** — a shell script writes GPS status directly into HEARTBEAT.md so the data is already in the agent's system prompt.
+
+### How it works
+
+```
+launchd (every 2 min) → gps-inject.sh → reads GPS data → writes to HEARTBEAT.md header
+                                                          ↓
+                                         Agent heartbeat reads HEARTBEAT.md
+                                         GPS data is already in system prompt
+                                         Agent can't "forget" to check GPS
+```
+
+### Setup
+
+1. Copy and edit `scripts/gps-inject.sh`:
+   - Set `GPS_FILE` to your `data/current-location.json` path
+   - Set `HEARTBEAT` to your agent's `HEARTBEAT.md` path
+   - Create a `known-places.json` with your named locations (see format below)
+
+2. Create a launchd plist (macOS) or cron entry:
+
+```xml
+<!-- ~/Library/LaunchAgents/com.agent.gps-inject.plist -->
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>com.agent.gps-inject</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/path/to/scripts/gps-inject.sh</string>
+    </array>
+    <key>StartInterval</key><integer>120</integer>
+    <key>RunAtLoad</key><true/>
+</dict>
+</plist>
+```
+
+```bash
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.agent.gps-inject.plist
+```
+
+3. Your HEARTBEAT.md will automatically show:
+```
+<!-- GPS_START -->
+> 📍 User at Home | Updated 09:53 (1 min ago) | 🔋85% WiFi | Accuracy 7m
+<!-- GPS_END -->
+```
+
+### Known places format
+
+```json
+[
+  {"name": "Home", "lat": 40.033, "lon": 116.417, "radius": 0.003},
+  {"name": "Office", "lat": 40.052, "lon": 116.294, "radius": 0.003}
+]
+```
+
+Use coordinates from your actual GPS data (same coordinate system). For unknown locations, the script falls back to OSM Nominatim reverse geocoding (WGS-84, free, no API key).
+
+### Why this pattern matters
+
+Text-level instructions ("check GPS every heartbeat") are unreliable — agents read them but may not execute. Code-level injection bypasses the agent's decision-making entirely: the data is in the prompt whether the agent "remembers" to check or not. This is a general pattern: **if an agent must see something, inject it into context; don't ask the agent to go look.**
